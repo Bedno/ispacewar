@@ -48,18 +48,21 @@ var ResizeTimer = null;
 var WinIsTall = -1;  var WinWasTall = -1;  // orientation change detection
 var PixWid = 1;  var PixHgt = 1;  // Resized pixel.  Overriden later.
 // Touchpad opacity effects support.
-const OpacityMax = 0.6;  const OpacityMin = 0.2;
+var OpacityMax = 0.6;  var OpacityMin = 0.2;
 var BtnOpacity = OpacityMin;  var ActionCnt = 0;  var BtnCycles = 0;
 var BtnTimer = null;
 const BtnBorderPix = 5;  // Width of corner rounding.
-var UserKeycode = 0;  // main keypress
+var UserKeycode = 0; // main keypress
+// Hidden feature allowing exit to a calling webpage.
+var UserKeySeq = "";  var ReturnURL = "";  var NoTouch = false;
 
 // === USER ===
 
 // Various keys and aliases are mapped to PDP-1 toggles for two player game where keyboard present.
+// Tweaked from classic key clusters. ASDW JKLO - plus numeric keypad variations.
 function UserKeyDown(e){
-  // Slight tweak on classic key clusters: ASDW JKLI - plus numeric keypad variations.
   UserKeycode = e.keyCode;
+  DebugMsg('#'+UserKeycode.toString());
   // Keycodes determined by testing, don't exactly match ASCII.
   if ( (UserKeycode==87) || (UserKeycode==40) || (UserKeycode==98) || (UserKeycode==50) ) PDPcontrol |= 01;         // W | 2: A torpedo
   if ( (UserKeycode==83) || (UserKeycode==37) || (UserKeycode==100) || (UserKeycode==52) ) PDPcontrol |= 02;        // S | 4: A thrust
@@ -69,9 +72,13 @@ function UserKeyDown(e){
   if ( (UserKeycode==75) || (UserKeycode==39) || (UserKeycode==102) || (UserKeycode==54) ) PDPcontrol |= 0100000;   // K | 6: B thrust
   if ( (UserKeycode==76) || (UserKeycode==33) || (UserKeycode==105) || (UserKeycode==57) ) PDPcontrol |= 0200000;   // L | 9: B right
   if ( (UserKeycode==74) || (UserKeycode==34) || (UserKeycode==99) || (UserKeycode==51) ) PDPcontrol |= 0400000;    // J | 3: B left
-  if ( (UserKeycode==32) || (UserKeycode==191) || (UserKeycode==12) || (UserKeycode==101) || (UserKeycode==53) )  { AboutToggle(0); } else { if (BtnCycles>0) { AboutToggle(-1); } }
+  if ( (UserKeycode==32) || (UserKeycode==191) || (UserKeycode==12) || (UserKeycode==101) || (UserKeycode==53) )  { UserKeycode=53; AboutToggle(0); } else { if (BtnCycles>0) { AboutToggle(-1); } }
   ButtonTimerReset();
   if ( (UserKeycode==32) || (UserKeycode==13) )  { AboutToggle(-1); }
+  // Handling of special hidden multi-key sequences.  555555 returns to calling URL if set.
+  if (UserKeySeq.length>=12) { UserKeySeq = UserKeySeq.substr(UserKeycode.toString().length); }
+  UserKeySeq += UserKeycode.toString();
+  if ( (UserKeySeq=='535353535353') && (ReturnURL.length>3) ) { location.href = ReturnURL; }
 }
 function UserKeyUp(e){
   UserKeycode = e.keyCode;
@@ -128,17 +135,22 @@ function ButtonUnhide () {
 }
 // Any user action instantly hide the controls and set up the timer to fade them in again later.
 function ButtonTimerReset () {
-  if (ActionCnt == 1) {
-    AboutToggle(-1);
-    BtnOpacity = OpacityMax;
-    BtnTimer = setTimeout('ButtonHide()',2000);
-    CRTtimer = setTimeout('UpdFrame()', CRTms);
+  if (NoTouch) {
+    BtnOpacity = 0;  OpacityMin = 0;  OpacityMax = 0;
+    document.getElementById('UserControls').style.opacity = OpacityMin;
   } else {
-    if (ActionCnt > 1) {
-      BtnOpacity = OpacityMin;
-      document.getElementById('UserControls').style.opacity = OpacityMin;
-      if (BtnTimer!=null) { clearTimeout(BtnTimer); BtnTimer=null; }
-      BtnTimer = setTimeout('ButtonUnhide()', 4000);
+    if (ActionCnt == 1) {
+      AboutToggle(-1);
+      BtnOpacity = OpacityMax;
+      BtnTimer = setTimeout('ButtonHide()',2000);
+      CRTtimer = setTimeout('UpdFrame()', CRTms);
+    } else {
+      if (ActionCnt > 1) {
+        BtnOpacity = OpacityMin;
+        document.getElementById('UserControls').style.opacity = OpacityMin;
+        if (BtnTimer!=null) { clearTimeout(BtnTimer); BtnTimer=null; }
+        BtnTimer = setTimeout('ButtonUnhide()', 4000);
+      }
     }
   }
   ActionCnt = Math.min(ActionCnt+1,999);
@@ -147,29 +159,37 @@ function ButtonTimerReset () {
 // Automatically calculates neat proportional fits using ratios and some fixed widths.
 function ButtonAdj (BtnName, BtnCol, BtnRow, BtnMsg, BtnAlign, BtnNum, BtnKey, BtnTeam) {
   var BtnKeyFmt = "";  var BtnColor = "";
-  if (BtnTeam=='A') { BtnColor = "blue"; } else { if (BtnTeam=='B') { BtnColor = "red"; } else { BtnColor = "yellow"; } }
-  if (document.getElementById('Ctl'+BtnName)) {
-    document.getElementById('Div'+BtnName).style.width = Math.floor((CRTwid-(BtnBorderPix*6*2))/3).toString()+'px';
-    document.getElementById('Div'+BtnName).style.height = Math.floor((CRThgt-(BtnBorderPix*6*2))/3).toString()+'px';
-    document.getElementById('Div'+BtnName).style.left = Math.floor(BtnBorderPix+BtnCol*(CRTwid/3)).toString()+'px';
-    document.getElementById('Div'+BtnName).style.top = Math.floor(BtnBorderPix+BtnRow*(CRThgt/3)).toString()+'px';
-    document.getElementById('Div'+BtnName).style.textAlign = BtnAlign;
-    document.getElementById('Div'+BtnName).style.borderRadius = BtnBorderPix.toString()+"px";
-    document.getElementById('Div'+BtnName).style.border = BtnBorderPix.toString()+"px solid "+BtnColor;
-    document.getElementById('Ctl'+BtnName).style.paddingTop = Math.floor(CRThgt/11).toString()+'px';
-    BtnKeyFmt = "";
-    if (BtnAlign.indexOf("left")>=0) { BtnKeyFmt += "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" }
-    BtnKeyFmt += '<b>'+BtnKey+'</b>';
-    if (BtnAlign.indexOf("right")>=0) { BtnKeyFmt += "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" }
-    BtnKeyFmt = '<span style="font-size:'+Math.floor((CRThgt-(BtnBorderPix*6))/22).toString()+'px"><br>'+BtnKeyFmt+'</span>';
-    document.getElementById('Btn'+BtnName).innerHTML = '&nbsp;'+BtnMsg+'&nbsp;'; // +BtnKeyFmt;
-    document.getElementById('Btn'+BtnName).style.backgroundColor = '#000000';
-    document.getElementById('Btn'+BtnName).style.fontSize = Math.floor((CRTmin-(BtnBorderPix*6*2))/14).toString()+'px';
-    document.getElementById('Btn'+BtnName).style.color = BtnColor;
-    document.getElementById('Pad'+BtnName).style.width = Math.floor((CRTwid-(BtnBorderPix*6*2))/3).toString()+'px';
-    document.getElementById('Pad'+BtnName).style.height = Math.floor((CRThgt-(BtnBorderPix*6*2))/3).toString()+'px';
-    document.getElementById('Pad'+BtnName).style.left = Math.floor(BtnCol*((CRTwid+BtnBorderPix*2)/3)).toString()+'px';
-    document.getElementById('Pad'+BtnName).style.top = Math.floor(BtnRow*((CRThgt+BtnBorderPix*2)/3)).toString()+'px';
+  if (NoTouch) {
+    BtnOpacity = 0;  OpacityMin = 0;  OpacityMax = 0;
+    document.getElementById('UserControls').style.opacity = OpacityMin;
+    document.getElementById('Div'+BtnName).style.visible = false;
+    document.getElementById('Ctl'+BtnName).style.visible = false;
+    document.getElementById('Btn'+BtnName).style.visible = false;
+  } else {
+    if (BtnTeam=='A') { BtnColor = "blue"; } else { if (BtnTeam=='B') { BtnColor = "red"; } else { BtnColor = "yellow"; } }
+    if (document.getElementById('Ctl'+BtnName)) {
+      document.getElementById('Div'+BtnName).style.width = Math.floor((CRTwid-(BtnBorderPix*6*2))/3).toString()+'px';
+      document.getElementById('Div'+BtnName).style.height = Math.floor((CRThgt-(BtnBorderPix*6*2))/3).toString()+'px';
+      document.getElementById('Div'+BtnName).style.left = Math.floor(BtnBorderPix+BtnCol*(CRTwid/3)).toString()+'px';
+      document.getElementById('Div'+BtnName).style.top = Math.floor(BtnBorderPix+BtnRow*(CRThgt/3)).toString()+'px';
+      document.getElementById('Div'+BtnName).style.textAlign = BtnAlign;
+      document.getElementById('Div'+BtnName).style.borderRadius = BtnBorderPix.toString()+"px";
+      document.getElementById('Div'+BtnName).style.border = BtnBorderPix.toString()+"px solid "+BtnColor;
+      document.getElementById('Ctl'+BtnName).style.paddingTop = Math.floor(CRThgt/11).toString()+'px';
+      BtnKeyFmt = "";
+      if (BtnAlign.indexOf("left")>=0) { BtnKeyFmt += "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" }
+      BtnKeyFmt += '<b>'+BtnKey+'</b>';
+      if (BtnAlign.indexOf("right")>=0) { BtnKeyFmt += "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" }
+      BtnKeyFmt = '<span style="font-size:'+Math.floor((CRThgt-(BtnBorderPix*6))/22).toString()+'px"><br>'+BtnKeyFmt+'</span>';
+      document.getElementById('Btn'+BtnName).innerHTML = '&nbsp;'+BtnMsg+'&nbsp;'; // +BtnKeyFmt;
+      document.getElementById('Btn'+BtnName).style.backgroundColor = '#000000';
+      document.getElementById('Btn'+BtnName).style.fontSize = Math.floor((CRTmin-(BtnBorderPix*6*2))/14).toString()+'px';
+      document.getElementById('Btn'+BtnName).style.color = BtnColor;
+      document.getElementById('Pad'+BtnName).style.width = Math.floor((CRTwid-(BtnBorderPix*6*2))/3).toString()+'px';
+      document.getElementById('Pad'+BtnName).style.height = Math.floor((CRThgt-(BtnBorderPix*6*2))/3).toString()+'px';
+      document.getElementById('Pad'+BtnName).style.left = Math.floor(BtnCol*((CRTwid+BtnBorderPix*2)/3)).toString()+'px';
+      document.getElementById('Pad'+BtnName).style.top = Math.floor(BtnRow*((CRThgt+BtnBorderPix*2)/3)).toString()+'px';
+    }
   }
 }
 // Show tailed diagnostic log, activated by making debug div visible.
@@ -186,17 +206,21 @@ function DebugMsg (DbgIn) {
 }
 // Splash screen / Help info show/hide.
 function AboutToggle (ATin) {
-  if (document.getElementById('DivAbout')) {
-    if (ATin>0) {
-      document.getElementById('DivAbout').style.visibility='visible';
-    } else {
-      if (ATin<0) {
-        document.getElementById('DivAbout').style.visibility='hidden';
+  if (NoTouch) {
+    document.getElementById('DivAbout').style.visibility='hidden';
+  } else {
+    if (document.getElementById('DivAbout')) {
+      if (ATin>0) {
+        document.getElementById('DivAbout').style.visibility='visible';
       } else {
-        if (document.getElementById('DivAbout').style.visibility=='hidden') {
-          document.getElementById('DivAbout').style.visibility='visible';
-        } else {
+        if (ATin<0) {
           document.getElementById('DivAbout').style.visibility='hidden';
+        } else {
+          if (document.getElementById('DivAbout').style.visibility=='hidden') {
+            document.getElementById('DivAbout').style.visibility='visible';
+          } else {
+            document.getElementById('DivAbout').style.visibility='hidden';
+          }
         }
       }
     }
@@ -214,6 +238,7 @@ function TouchPadEventSetup (PSname,PSnum) {
 }
 // First time startup, for onetime processes.
 function ClientBoot () {
+  if ( (document.getElementById('DivDebug')) && (location.href.indexOf('debug')>1) ) { document.getElementById('DivDebug').style.visibility='visible'; }
   if (document.getElementById('CRTcanvas')) {
     CRTcanvas = document.getElementById('CRTcanvas');
     document.getElementById('CRTcanvas').addEventListener("mousedown", function (event) {event.preventDefault();}, true);
@@ -247,7 +272,7 @@ function ClientBoot () {
   window.onkeyup = function(e){UserKeyUp(e);}
   window.onresize = function(event) {
     if (ResizeTimer) { clearTimeout(ResizeTimer); ResizeTimer = null; }
-    ResizeTimer = setTimeout('ClientSetup()',1200);
+    ResizeTimer = setTimeout('ClientSetup()',1500);
   }
   // Splash screen.
   AboutToggle(1);
@@ -258,13 +283,36 @@ function ClientBoot () {
   setTimeout('AboutToggle(-1);',8000)
 }
 
+// Handle options for return URL and notouch.
+function GetArg(ga_name) {
+  var ga_start=location.search.indexOf("?"+ga_name+"=");
+  if (ga_start<0) ga_start=location.search.indexOf("&"+ga_name+"=");
+  if (ga_start<0) return '';
+  ga_start += ga_name.length+2;
+  var ga_end=location.search.indexOf("&",ga_start)-1;
+  if (ga_end<0) ga_end=location.search.length;
+  var ga_result=location.search.substring(ga_start,ga_end);
+  var ga_result='';
+  for(var ga_i=ga_start; ga_i<=ga_end; ga_i++) {
+    var ga_c=location.search.charAt(ga_i);
+    ga_result=ga_result+(ga_c=='+'?' ':ga_c);
+  }
+  return unescape(ga_result);
+}
+ReturnURL = GetArg("u");
+NoTouch = (ReturnURL.length>1);
+
 // Overall master client boot environment setup and launch.
 function ClientSetup () {
-  var WinWidTmp = window.innerWidth && document.documentElement.clientWidth ? Math.min(window.innerWidth, document.documentElement.clientWidth) : window.innerWidth || document.documentElement.clientWidth || document.getElementsByTagName('body')[0].clientWidth;
-  var WinHgtTmp = window.innerHeight && document.documentElement.clientHeight ? Math.min(window.innerHeight, document.documentElement.clientHeight) : window.innerHeight || document.documentElement.clientHeight || document.getElementsByTagName('body')[0].clientHeight;
+  var WinWidTmp = window.innerWidth;
+  var WinHgtTmp = window.innerHeight;
+  try { if (document.getElementsByTagName('body')[0]) { WinWidTmp = Math.min(WinWidTmp,document.getElementsByTagName('body')[0].clientWidth); } } catch (err) { }
+  try { if (document.getElementsByTagName('body')[0]) { WinHgtTmp = Math.min(WinHgtTmp,document.getElementsByTagName('body')[0].clientHeight); } } catch (err) { }
+  // No longer checks document.documentElement.clientWidth|Height
   WinWid = WinWidTmp;  WinHgt = WinHgtTmp;
-  if ( (WinWid>=64) && (WinWid<=PDPmax) ) {
-    if ( (WinHgt>=64) && (WinHgt<=PDPmax) ) {
+  if ( (WinWid>120) && (WinWid<=PDPmax) ) { // Must exceed the initial size of the CRTclip div in HTML near end.
+    if ( (WinHgt>120) && (WinHgt<=PDPmax) ) {
+      // Orientation change trapping, but no reload needed.
       WinWasTall = WinIsTall;
       WinIsTall = ( (WinHgt>WinWid) ? 1 : 0 );
       // if ( (WinWasTall>=0) && (WinIsTall>=0) && (WinWasTall!=WinIsTall) ) { location.reload(); }
@@ -273,6 +321,10 @@ function ClientSetup () {
       // Minimum pixel size is 2 if screen is at all modestly big, else it grows as a fraction of total screen size.
       PixWid = Math.max(((CRTwid>200)?2:1),Math.round(CRTwid/512));
       PixHgt = Math.max(((CRThgt>200)?2:1),Math.round(CRThgt/512));
+      DebugMsg('Win='+CRTwid.toString()+'x'+CRThgt.toString()+"\n" +
+               'window.innerHeight='+window.innerHeight.toString()+"\n"+
+               'document.documentElement.clientHeight='+document.documentElement.clientHeight.toString()+"\n"+
+               'document.getElementsByTagName("body")[0].clientHeight='+document.getElementsByTagName("body")[0].clientHeight.toString() );
     }
   }
   if (document.getElementById('CRTdiv')) { document.getElementById('CRTdiv').width = CRTwid+'px'; }
@@ -304,8 +356,8 @@ function ClientSetup () {
       CRTframePix[CRTidxFrame] = 0;
     }
   } catch (err) { CRTcanvas=null; }
-  document.getElementById('AboutText').style.fontSize = Math.floor(CRTmin/22).toString()+'px';
-  document.getElementById('AboutTitle').style.fontSize = Math.floor(CRTmin/14).toString()+'px';
+  document.getElementById('AboutText').style.fontSize = Math.floor(CRTmin/25).toString()+'px';
+  document.getElementById('AboutTitle').style.fontSize = Math.floor(CRTmin/17).toString()+'px';
 }
 
 // PDP-1 "Mode 30" CRT is emulated here on an HTML5 canvas.
@@ -829,7 +881,7 @@ var PDPmemory = [  // linenumber
 // Spacewar! was conceived in 1961 by Martin Graetz, Stephen Russell, and Wayne Wiitanen. It was first realized on the PDP-1 in 1962 by Stephen Russell, Peter Samson, Dan Edwards, and Martin Graetz, together with Alan Kotok, Steve Piner, and Robert A Saunders. Spacewar! is in the public domain but this credit paragraph must accompany all distributed versions of the program.
 </script>
 </head>
-<body onload="ClientBoot();" style="background:black; padding:0 0 0 0; margin:0 0 0 0;" onselectstart="return false" onscrollstart="return false">
+<body onload="ClientBoot();" style="background:black; padding:0 0 0 0; margin:0 0 0 0; overflow:hidden;" onselectstart="return false" onscrollstart="return false">
 <font face="Arial" size=1>
 
 <!-- z-index strictly matters on every item below, putting touch pads on top, transparent canvas in the middle, and instructions on the bottom.-->
@@ -846,7 +898,7 @@ var PDPmemory = [  // linenumber
 </div>
 
 <div id="CRTdiv" style="z-index:28; position:relative; top:0px; left:0px;">
-<div id="CRTclip" style="z-index:29; position:relative; top:0px; left:0px; overflow:hidden; width:140px; height:140px;">
+<div id="CRTclip" style="z-index:29; position:relative; top:0px; left:0px; overflow:hidden; width:120px; height:120px;">
 <canvas id="CRTcanvas" style="z-index:30; position:relative; top:0px; left:0px;"></canvas>
 </div>
 </div>
@@ -861,7 +913,7 @@ var PDPmemory = [  // linenumber
 <div id="PadBRight" style="z-index:47; position:absolute;"> </div>
 <div id="PadBTorpedo" style="z-index:48; position:absolute;"> </div>
 
-<div id="DivAbout" onClick="AboutToggle(-1);" style="z-index:50; position:absolute; left:0px; top:0px; visibility:visible; background-color:#FFFFFF; margin:20px 20px 20px 20px; padding:16px 16px 16px 16px; color:#000000; border-style:solid; border-width:4px; border-color:gray; display:inline-block; border-radius:15px;">
+<div id="DivAbout" onClick="AboutToggle(-1);" style="z-index:50; position:absolute; left:0px; top:0px; visibility:hidden; background-color:#FFFFFF; margin:20px 20px 20px 20px; padding:16px 16px 16px 16px; color:#000000; border-style:solid; border-width:4px; border-color:gray; display:inline-block; border-radius:15px;">
 <span id="AboutText" style="font-family:Arial; color:black; font-size:4pt;">
 <span id="AboutTitle" style="font-family:Arial; color:green; font-size:6pt;"><b><i>iSpacewar!</i></b></span><br>
 The world's first video game (1962's 'Spacewar!') running on a simulation of one of the world's first commercially produced computers (DEC's PDP-1)
@@ -870,7 +922,7 @@ Maneuver with retros & thruster, avoid star's gravity, Left+Right risks Hyperspa
 <a href="http://Bedno.com/spacewar/about" target="about"><b>Bedno.com/spacewar/about</b></a></span>
 </span></div>
 
-<div id="DivDebug" style="visibility:hidden; position:absolute; left:0px; top:0px; background-color:#FFFFFF; padding:4px 4px 4px 4px; font-family:Arial; color:#000000; font-size:9pt;"> </div>
+<div id="DivDebug" style="visibility:hidden; z-index:60; position:absolute; left:0px; top:0px; background-color:#FFFFFF; padding:4px 4px 4px 4px; font-family:Arial; color:#000000; font-size:9pt;"> </div>
 
 </font>
 </body>
