@@ -236,6 +236,14 @@ function TouchPadEventSetup (PSname,PSnum) {
   document.getElementById('Pad'+PSname).addEventListener("touchcancel", function (event) {UserTap(0-PSnum); event.preventDefault();}, true);
   document.getElementById('Pad'+PSname).addEventListener("dblclick", function (event) {UserTap(0-PSnum); event.preventDefault();}, true);
 }
+// Fixes URL bar overlapping screen on small windows.
+function FinishScreen () {
+  if ( ( (navigator.userAgent.toLowerCase().indexOf('iphone')>-1) || (navigator.userAgent.toLowerCase().indexOf('ipod')>-1) ||
+         (navigator.userAgent.toLowerCase().indexOf('ipad')>-1) || (navigator.userAgent.toLowerCase().indexOf('ios')>-1) ) ||
+       (navigator.userAgent.toLowerCase().indexOf('droid')>-1) ) {
+    window.scrollTo(0, 1);
+  }
+}
 // First time startup, for onetime processes.
 function ClientBoot () {
   if ( (document.getElementById('DivDebug')) && (location.href.indexOf('debug')>1) ) { document.getElementById('DivDebug').style.visibility='visible'; }
@@ -276,8 +284,6 @@ function ClientBoot () {
   }
   // Splash screen.
   AboutToggle(1);
-  // Attempts (but fails) to fix Safari problem where URL bar sometimes covers top row of webpage.
-  window.scrollTo(0, 1);
   // Launch main engine, which sets it's own timer to continue running.
   UpdFrame();
   setTimeout('AboutToggle(-1);',8000)
@@ -312,10 +318,10 @@ function ClientSetup () {
   WinWid = WinWidTmp;  WinHgt = WinHgtTmp;
   if ( (WinWid>120) && (WinWid<=PDPmax) ) { // Must exceed the initial size of the CRTclip div in HTML near end.
     if ( (WinHgt>120) && (WinHgt<=PDPmax) ) {
-      // Orientation change trapping, but no reload needed.
+      // Orientation change trapping.
       WinWasTall = WinIsTall;
       WinIsTall = ( (WinHgt>WinWid) ? 1 : 0 );
-      // if ( (WinWasTall>=0) && (WinIsTall>=0) && (WinWasTall!=WinIsTall) ) { location.reload(); }
+      if ( (WinWasTall>=0) && (WinIsTall>=0) && (WinWasTall!=WinIsTall) ) { setTimeout('FinishScreen()',2500); }
       CRTwid = WinWid;  CRThgt = WinHgt;
       CRTmin = Math.min(CRThgt,CRTwid);
       // Minimum pixel size is 2 if screen is at all modestly big, else it grows as a fraction of total screen size.
